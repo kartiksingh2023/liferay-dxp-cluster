@@ -1,0 +1,6 @@
+V3 changes:
+1. Removed dependency on liferay-node1 health before creating node2.
+2. Added explicit hostnames for both liferay containers.
+3. Changed node1 JGroups bootstrap to self-discovery only.
+4. Node2 can join later using TCPPING.
+5. Root cause: UnknownHostException liferay-node2 during node1 startup.

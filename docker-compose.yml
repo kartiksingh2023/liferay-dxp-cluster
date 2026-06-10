@@ -1,0 +1,203 @@
+# ══════════════════════════════════════════════════════════════════
+# Liferay DXP Cluster — Docker Compose
+# Startup order: MySQL → ES1 → ES2 → Liferay Node1 → Liferay Node2
+# ══════════════════════════════════════════════════════════════════
+
+networks:
+  liferay-cluster-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  mysql-data:
+  es1-data:
+  es2-data:
+  liferay-node1-data:
+  liferay-node2-data:
+
+services:
+
+  # ════════════════════════════════════════════════════════════════
+  # MySQL 8.4 — shared by both Liferay nodes
+  # ════════════════════════════════════════════════════════════════
+  mysql:
+    image: ${MYSQL_IMAGE}
+    container_name: liferay-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_ROOT_HOST: "%"
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --max_allowed_packet=128M
+      --innodb-buffer-pool-size=512M
+      --skip-name-resolve
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql/init-scripts:/docker-entrypoint-initdb.d:ro
+    networks:
+      - liferay-cluster-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "--host=localhost", "--user=root", "--password=${MYSQL_ROOT_PASSWORD}", "--silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  # ════════════════════════════════════════════════════════════════
+  # Elasticsearch Node 1 — paired with liferay-node1
+  # Host ports: 9200 (HTTP), 9300 (transport)
+  # ════════════════════════════════════════════════════════════════
+  es-node1:
+    build:
+      context: ./elasticsearch
+      dockerfile: Dockerfile
+    image: liferay-elasticsearch:8.19
+    container_name: liferay-es-node1
+    restart: unless-stopped
+    environment:
+      - node.name=es-node1
+      - cluster.name=${ES_CLUSTER_NAME}
+      - cluster.initial_master_nodes=es-node1,es-node2
+      - discovery.seed_hosts=es-node1,es-node2
+      - xpack.security.enabled=false
+      - ingest.geoip.downloader.enabled=false
+      - ES_JAVA_OPTS=${ES_JAVA_OPTS}
+    ports:
+      - "${ES1_HTTP_PORT}:9200"
+      - "${ES1_TRANSPORT_PORT}:9300"
+    volumes:
+      - es1-data:/usr/share/elasticsearch/data
+      - ./elasticsearch/node1/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+    networks:
+      liferay-cluster-net:
+        ipv4_address: 172.28.1.1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=10s || exit 1"]
+      interval: 15s
+      timeout: 15s
+      retries: 12
+      start_period: 60s
+
+  # ════════════════════════════════════════════════════════════════
+  # Elasticsearch Node 2 — paired with liferay-node2
+  # Host ports: 9201 (HTTP), 9301 (transport) — avoids conflict with ES1
+  # ════════════════════════════════════════════════════════════════
+  es-node2:
+    image: liferay-elasticsearch:8.19
+    container_name: liferay-es-node2
+    restart: unless-stopped
+    depends_on:
+      es-node1:
+        condition: service_healthy
+    environment:
+      - node.name=es-node2
+      - cluster.name=${ES_CLUSTER_NAME}
+      - cluster.initial_master_nodes=es-node1,es-node2
+      - discovery.seed_hosts=es-node1,es-node2
+      - xpack.security.enabled=false
+      - ingest.geoip.downloader.enabled=false
+      - ES_JAVA_OPTS=${ES_JAVA_OPTS}
+    ports:
+      - "${ES2_HTTP_PORT}:9200"
+      - "${ES2_TRANSPORT_PORT}:9300"
+    volumes:
+      - es2-data:/usr/share/elasticsearch/data
+      - ./elasticsearch/node2/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+    networks:
+      liferay-cluster-net:
+        ipv4_address: 172.28.1.2
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=10s || exit 1"]
+      interval: 15s
+      timeout: 15s
+      retries: 12
+      start_period: 60s
+
+  # ════════════════════════════════════════════════════════════════
+  # Liferay Node 1
+  # HTTP:    8080 → 8080
+  # HTTPS:   8443 → 8443
+  # JGroups: 7800 → 7800
+  # ════════════════════════════════════════════════════════════════
+  liferay-node1:
+    image: ${LIFERAY_IMAGE}
+    container_name: liferay-node1
+    hostname: liferay-node1
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      es-node1:
+        condition: service_healthy
+    environment:
+      LIFERAY_DISABLE_TRIAL_LICENSE: "true"
+      LIFERAY_MODULE_PERIOD_FRAMEWORK_PERIOD_PROPERTIES_PERIOD_OSGI_PERIOD_CONSOLE: "0.0.0.0:11311"
+    ports:
+      - "${NODE1_HTTP_PORT}:8080"
+      - "${NODE1_HTTPS_PORT}:8443"
+      - "${NODE1_JGROUPS_PORT}:7800"
+      - "${NODE1_OSGI_PORT}:11311"
+    volumes:
+      - liferay-node1-data:/opt/liferay/data
+      # /mnt/liferay is the official Liferay Docker shared volume.
+      # The entrypoint copies files/ → /opt/liferay/, deploy/ → deploy, etc.
+      # This means:
+      #   files/portal-ext.properties  → /opt/liferay/portal-ext.properties
+      #   files/tomcat/bin/setenv.sh   → /opt/liferay/tomcat/bin/setenv.sh
+      #   files/jgroups/tcp.xml        → /opt/liferay/jgroups/tcp.xml
+      #   files/osgi/configs/*.config  → /opt/liferay/osgi/configs/
+      #   deploy/*                     → /opt/liferay/deploy/
+      - ./node1/liferay-shared:/mnt/liferay
+    networks:
+      - liferay-cluster-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/c/portal/layout || exit 1"]
+      interval: 30s
+      timeout: 20s
+      retries: 20
+      start_period: 240s
+
+  # ════════════════════════════════════════════════════════════════
+  # Liferay Node 2
+  # HTTP:    8081 → 8080  (mapped externally to 8081)
+  # HTTPS:   9443 → 8443
+  # JGroups: 7801 → 7801
+  # Node 2 waits for Node 1 to be healthy before joining the cluster
+  # ════════════════════════════════════════════════════════════════
+  liferay-node2:
+    image: ${LIFERAY_IMAGE}
+    container_name: liferay-node2
+    hostname: liferay-node2
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      es-node2:
+        condition: service_healthy
+      # node2 DNS name must exist before node1 initializes JGroups
+    environment:
+      LIFERAY_DISABLE_TRIAL_LICENSE: "true"
+      LIFERAY_MODULE_PERIOD_FRAMEWORK_PERIOD_PROPERTIES_PERIOD_OSGI_PERIOD_CONSOLE: "0.0.0.0:11311"
+    ports:
+      - "${NODE2_HTTP_PORT}:8080"
+      - "${NODE2_HTTPS_PORT}:8443"
+      - "${NODE2_JGROUPS_PORT}:7801"
+      - "${NODE2_OSGI_PORT}:11311"
+    volumes:
+      - liferay-node2-data:/opt/liferay/data
+      - ./node2/liferay-shared:/mnt/liferay
+    networks:
+      - liferay-cluster-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/c/portal/layout || exit 1"]
+      interval: 30s
+      timeout: 20s
+      retries: 20
+      start_period: 240s
