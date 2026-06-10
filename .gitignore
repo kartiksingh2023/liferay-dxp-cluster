@@ -1,0 +1,17 @@
+cat > .gitignore << 'EOF'
+# Docker override files
+docker-compose.override.yml
+
+# Local environment overrides
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.idea/
+.vscode/
+*.swp
+EOF
