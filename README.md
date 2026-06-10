@@ -19,7 +19,7 @@ A production-style Liferay DXP cluster running two application nodes backed by a
    |                       │              │ shared DB    │                      |
    |                 ┌─────┼──────────────┴──────────────┼─────┐                |
    |                 │     │                             │     │                |
-   |           ┌─────▼─────┴──┐                   ┌───────┴─────▼──┐            |
+   |           ┌─────▼─────┴──┐                   ┌──────┴─────▼───┐            |
    |           │ Liferay Node1│◄───JGroups TCP───►│ Liferay Node2  │            |
    |           │  :8080 :8443 │                   │  :8081 :9443   │            |
    |           └───┬───────┬──┘                   └────┬────────┬──┘            |
