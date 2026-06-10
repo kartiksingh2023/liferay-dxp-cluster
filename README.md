@@ -87,7 +87,7 @@ docker run --rm --privileged alpine sysctl -w vm.max_map_count=262144
 ## Project Structure
 
 ```
-liferay-cluster-fixed-logging-v1/
+liferay-dxp-cluster-environment/
 ├── docker-compose.yml
 ├── .env                          # All tunable variables
 │
