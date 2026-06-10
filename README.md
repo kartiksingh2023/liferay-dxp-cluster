@@ -7,34 +7,32 @@ A production-style Liferay DXP cluster running two application nodes backed by a
 ## Architecture Overview
 
 ```
-   +----------------------------------------------------------------------------+
-   |                       ┌─────────────────────────────┐                      |
-   |                       │  liferay-cluster-net        │                      |
-   |                       │  172.28.0.0/16 (bridge)     │                      |
-   |                       │                             │                      |
-   |                       │   ┌──────────────────────┐  │                      |
-   |                       │   │    MySQL 8.4         │  │                      |
-   |                       │   │  liferay-mysql :3306 │  │                      |            
-   |                       │   └──────────┬───────────┘  │                      |
-   |                       │              │ shared DB    │                      |
-   |                 ┌─────┼──────────────┴──────────────┼─────┐                |
-   |                 │     │                             │     │                |
-   |           ┌─────▼─────┴──┐                   ┌───────┴─────▼──┐            |
-   |           │ Liferay Node1│◄───JGroups TCP───►│ Liferay Node2  │            |
-   |           │  :8080 :8443 │                   │  :8081 :9443   │            |
-   |           └───┬───────┬──┘                   └────┬────────┬──┘            |
-   |               │       └─────────────────────────┐ │        │               |
-   |            primary                              │ │     primary            |
-   |               │       ┌─────────────────────────│─┘        │               |
-   |               ▼       ▼                         ▼          ▼               |
-   |       ┌────────────────┐      ES transport   ┌────────────────────┐        |
-   |       │  ES Node 1     │◄───────:9300───────►│  ES Node 2         │        |
-   |       │ 172.28.1.1     │                     │  172.28.1.2        │        |
-   |       │ :9200 / :9300  │                     │  :9201 / :9301     │        |
-   |       └────────────────┘                     └────────────────────┘        |
-   |                                                                            |
-   +----------------------------------------------------------------------------+
+                          ┌─────────────────────────────┐
+                          │  liferay-cluster-net        │
+                          │  172.28.0.0/16 (bridge)     │
+                          │                             │
+                          │   ┌──────────────────────┐  │
+                          │   │    MySQL 8.4         │  │
+                          │   │  liferay-mysql :3306 │  │
+                          │   └──────────┬───────────┘  │
+                          │              │ shared DB    │
+                    ┌─────┼──────────────┴──────────────┼─────┐
+                    │     │                             │     │
+              ┌─────▼─────┴──┐                   ┌───────┴─────▼──┐
+              │ Liferay Node1│◄────JGroups TCP────►│ Liferay Node2│
+              │  :8080 :8443 │                   │  :8081 :9443   │
+              └───┬───────┬──┘                   └────┬────────┬──┘
+                  │       └─────────────────────────┐ │        │
+               primary                              │ │     primary
+                  │       ┌─────────────────────────│─┘        │
+                  ▼       ▼                         ▼          ▼
+          ┌────────────────┐      ES transport   ┌────────────────────┐
+          │  ES Node 1     │◄───────:9300───────►│  ES Node 2         │
+          │ 172.28.1.1     │                     │  172.28.1.2        │
+          │ :9200 / :9300  │                     │  :9201 / :9301     │
+          └────────────────┘                     └────────────────────┘
 ```
+
 ---
 
 ## Services
@@ -66,7 +64,8 @@ Each step waits for the previous service's healthcheck to pass before proceeding
 | RAM | 12 GB+ | ES × 2 = 2 GB, Liferay × 2 = 8 GB |
 | `vm.max_map_count` | ≥ 262144 | Required by Elasticsearch |
 
-### Set `vm.max_map_count` (Linux)
+### Setting `vm.max_map_count` (Optional / If Required)(Linux)
+Note on Permissions: Tuning host kernel variables requires root privileges. If your host system already meets the minimum requirements, or if you are on a managed corporate runner without sudo access, you can skip this block.
 
 ```bash
 # Temporary (resets on reboot)
@@ -335,16 +334,6 @@ All data is persisted in named Docker volumes:
 | `liferay-node2-data` | Liferay Node 2 `/opt/liferay/data` |
 ---
 
-## Elasticsearch Failover Design
-Each Liferay node lists both ES nodes in its connector configuration. Node 1 tries es-node1 first, then es-node2; Node 2 does the opposite. Both hostname and static IP are listed so that if Docker DNS drops a stopped container's hostname, the static IP fallback still resolves:
-
-Node 1 Connector: networkHostAddresses=["es-node1:9200","172.28.1.1:9200","es-node2:9200","172.28.1.2:9200"]
-
-Node 2 Connector: networkHostAddresses=["es-node2:9200","172.28.1.2:9200","es-node1:9200","172.28.1.1:9200"]
-
-If es-node1 goes down, liferay-node1 automatically retries the next address in the list (es-node2) without manual intervention.
-
----
 ## License
 
 Internal infrastructure configuration — not for public distribution without review.
