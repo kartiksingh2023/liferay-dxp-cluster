@@ -159,23 +159,10 @@ ES1_HTTP_PORT=9200
 ES2_HTTP_PORT=9201
 ```
 
-### 3. Build the Elasticsearch image
-
-The custom image installs the four analysis plugins Liferay requires:
-
-```bash
-docker compose build es-node1
-```
-
-### 4. Start the cluster (recommended)
+### 3. Start the cluster (recommended)
 
 Use the provided startup script for ordered bringup with progress output:
-
-```bash
-bash scripts/start.sh
-```
-
-To rebuild the ES image before starting:
+Navigate to 'liferay-dxp-cluster-environment/' directory and run the below command:
 
 ```bash
 bash scripts/start.sh --build
