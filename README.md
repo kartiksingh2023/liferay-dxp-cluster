@@ -108,6 +108,8 @@ liferay-dxp-cluster-environment/
 ├── node1/liferay-shared/
 │   ├── files/
 │   │   ├── portal-ext.properties
+|   |   ├── deploy/
+│   |   │   └── cluster-activation-key.xml  
 │   │   ├── jgroups/tcp.xml
 │   │   └── osgi/configs/
 │   │       └── com.liferay.portal.search.elasticsearch7.configuration
