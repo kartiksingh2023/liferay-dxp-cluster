@@ -337,4 +337,4 @@ If es-node1 goes down, liferay-node1 automatically retries the next address in t
 ---
 ## License
 
-Internal infrastructure configuration — not for public distribution without review.
+This repository is provided for development, testing, and demonstration purposes. Liferay DXP requires a valid license for production usage.
